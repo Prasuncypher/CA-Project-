@@ -229,6 +229,7 @@ class Xecute:
         if signals[3] > 0:  # Not register x0
             val2 = BTD(CpuObject.registers[signals[3] - 1])
         self.decodeSignals = signals
+        # print("sub", CpuObject.registers)
         self.result = val1 - val2
 
     def AND(self, signals, CpuObject):
@@ -240,7 +241,7 @@ class Xecute:
         if signals[3] > 0:  # Not register x0
             val2 = BTD(CpuObject.registers[signals[3] - 1])
         self.decodeSignals = signals
-        self.result = val1 and val2
+        self.result = val1 & val2
 
     def OR(self, signals, CpuObject):
         # signals = [type,rd,rs1,rs2] :  we have to add rs1 and rs2 in this function
@@ -251,7 +252,7 @@ class Xecute:
         if signals[3] > 0:  # Not register x0
             val2 = BTD(CpuObject.registers[signals[3] - 1])
         self.decodeSignals = signals
-        self.result = val1 or val2
+        self.result = val1 | val2
 
     def AddImm(self, signals, CpuObject):
         # signals = [type,rd,rs1,imm] :  we have to add rs1 and rs2 in this function
@@ -400,9 +401,9 @@ def main():
     totalInstructions = 0
     for i in range(27):
         # check = False  # To check whether current clock cycle is needed or not for the program
-        # Step 1 :Write Back Stage
         # print(decode.result)
-        # print(i, decode.result)
+        # print(i, memStage.decodeSignals, memStage.result)
+        # Step 1 :Write Back Stage
         if len(decode.result) != 0 and len(memStage.decodeSignals) != 0:
             # print(i, memStage.decodeSignals)
             # print(memStage.decodeSignals)
@@ -413,6 +414,7 @@ def main():
             memStage.decodeSignals = []
 
         # Step 2 : Memory Stage :
+        # print(i, execute.decodeSignals, execute.result)
         if len(execute.decodeSignals) != 0:
             if execute.decodeSignals[0] not in ["sw", 'lw']:
                 # Not a memory operation
@@ -435,6 +437,7 @@ def main():
                 lis = ['lw', 'sw', 'beq', 'addi']
                 if decode.result[0] not in lis:
                     # Decode instruction have all registers rd,rs1,rs2
+                    # print(i, decode.result)
                     if registerToBeWritten in decode.result:  # RAW and WAW
                         PrintPartialCpuState(cpuObject, output)
                         execute.decodeSignals = []
@@ -462,7 +465,7 @@ def main():
                         execute.decodeSignals = []
                         continue
             temp = decode.result[0]
-            # print(i, temp)
+            # print(i, decode.result)
             if temp == "add":
                 execute.Add(decode.result, cpuObject)
             elif temp == "addi":
@@ -518,7 +521,8 @@ def main():
         PrintPartialCpuState(cpuObject, output)
     # Closing the text files opened
     binary.close()
-    # print("End State of Memory\n", dataMem.memory)
+    output.write("End State of Memory\n")
+    output.write(str(dataMem.memory))
     output.close()
     return
 
