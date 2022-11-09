@@ -77,6 +77,12 @@ class CPU:
         self.registers = list()
         for i in range(31):
             self.registers.append(initialValue)
+        self.specialRegisters = dict()
+        self.specialRegisters[DTB(16384)] = initialValue
+        self.specialRegisters[DTB(16388)] = initialValue
+        self.specialRegisters[DTB(16392)] = initialValue
+        self.specialRegisters[DTB(16396)] = initialValue
+        self.specialRegisters[DTB(16400)] = initialValue
 
 
 class InstructionMemory:
@@ -175,7 +181,9 @@ class Decode:
             imm = BTD(reverse(binary[20:]))
             self.result = [self.type, rd, rs1, imm]
 
-        elif binary[0:7] == "1100000" and binary[12:15] == "010":
+
+
+        elif binary[0:7] == "1100000" and binary[12:15] == "010":  # signals -> rd = m[rs1 + imm]
             self.type = "lw"
             rd = BTD(reverse(binary[7:12]))
             rs1 = BTD(reverse(binary[15:20]))
@@ -200,6 +208,21 @@ class Decode:
             imm = BTD(imm2 + imm1)
             self.result = [self.type, rs1, rs2, imm]
         # Remember to unset the flag busy on completing the work , busyFlag : regarding the structural hazard stalling
+        elif binary == "11111111111111111111111111111111":
+            # print("hi")
+            self.type = "storenoc"
+            self.result = [self.type, 0, 0, 0]
+
+        elif binary[0:6] == "111111":
+            self.type = "loadnoc"
+            # print("hi")
+            imm1 = reverse(binary[6:15])
+            rs1 = BTD(reverse(binary[15:20]))
+            rs2 = BTD(reverse(binary[20:25]))
+            imm2 = reverse(binary[25:])
+            imm = BTD(imm2 + imm1)
+            self.result = [self.type, rs2, rs1, imm]
+
         return self.result
 
 
@@ -208,6 +231,16 @@ class Xecute:
         # self.busy = False  # Used for checking stalling logics
         self.result = None  # value of register if needs to be udpated
         self.decodeSignals = list()  # storing decode signals for passing it to further stages
+
+    def loadNOC(self, signals, CpuObject):
+        # signals = [type, rs2, rs1 , imm]
+        # specialRegisters(rs1 + imm) = rs2
+        self.decodeSignals = signals
+        self.result = BTD(CpuObject.registers[signals[1] - 1])
+
+    def storeNOC(self, signals, CpuObject):
+        self.decodeSignals = signals
+        self.result = 1
 
     def Add(self, signals, CpuObject):
         # signals = [type,rd,rs1,rs2] :  we have to add rs1 and rs2 in this function
@@ -286,6 +319,7 @@ class Xecute:
         self.decodeSignals = signals
 
     def LoadWord(self, signals):
+        # signals  = [type, rd , rs1 , imm]
         # Nothing has to be done here
         self.result = None
         self.decodeSignals = signals
@@ -371,6 +405,9 @@ def PrintPartialCpuState(cpuObject, writeFile):
     output = cpuObject.registers
     writeFile.write(str(output))
     writeFile.write("\n")
+    writeFile.write("Printing Special Register File: \n")
+    writeFile.write(str(cpuObject.specialRegisters))
+    writeFile.write("\n")
     cpuObject.clock.updateCounter(1)
     return
 
@@ -399,15 +436,25 @@ def main():
     # Main Logic of the code
     # while True:
     totalInstructions = 0
-    for i in range(20):
+    temporary = 4
+    # for i in range(20):
+    i = -1
+    while True:
         # check = False  # To check whether current clock cycle is needed or not for the program
         # print(decode.result)
+        # i = i + 1
         # print(i, memStage.decodeSignals, memStage.result)
         # Step 1 :Write Back Stage
-        if len(decode.result) != 0 and len(memStage.decodeSignals) != 0:
+        if len(memStage.decodeSignals) != 0:
             # print(i, memStage.decodeSignals)
             # print(memStage.decodeSignals)
-            if memStage.decodeSignals[0]!='sw' and memStage.decodeSignals[0]!='beq':  # Given instruction not a memory instruction
+            if memStage.decodeSignals[0] == 'loadnoc':
+                cpuObject.specialRegisters[DTB(BTD(cpuObject.registers[memStage.decodeSignals[2] - 1]) + memStage.decodeSignals[3])] = DTB(memStage.result)
+
+            elif memStage.decodeSignals[0] == 'storenoc':
+                cpuObject.specialRegisters[DTB(16400)] = DTB(1)
+
+            elif memStage.decodeSignals[0] != 'sw' and memStage.decodeSignals[0] != 'beq':  # Given instruction not a memory instruction
                 # print(memStage.decodeSignals, .result , i)
                 write_back.writeRegister(memStage.decodeSignals, memStage.result, cpuObject)
                 memStage.mem = False
@@ -429,9 +476,9 @@ def main():
 
         # Step 3 : Execute Stage
         # print(i, decode.result)
-        if len(decode.result) != 0 :
+        if len(decode.result) != 0:
             # print(i, decode.result)
-            if len(memStage.decodeSignals)!=0 and memStage.decodeSignals[0] == 'lw':
+            if len(memStage.decodeSignals) != 0 and memStage.decodeSignals[0] == 'lw':
                 registerToBeWritten = memStage.decodeSignals[1]
                 # print(i, memStage.decodeSignals , decode.result)
                 lis = ['lw', 'sw', 'beq', 'addi']
@@ -442,14 +489,14 @@ def main():
                         PrintPartialCpuState(cpuObject, output)
                         execute.decodeSignals = []
                         continue
-                else :
+                else:
                     # Other instructions have only 2 registers
                     if registerToBeWritten == decode.result[1] or registerToBeWritten == decode.result[2]:
                         # print("hi")
                         execute.decodeSignals = []
                         PrintPartialCpuState(cpuObject, output)
                         continue
-            elif len(memStage.decodeSignals)!=0 and memStage.decodeSignals[0] == 'sw':
+            elif len(memStage.decodeSignals) != 0 and memStage.decodeSignals[0] == 'sw':
                 # we have to check only for WAR case
                 registerToBeWritten = decode.result[1]
                 lis = ['lw', 'sw', 'beq', 'addi']
@@ -460,7 +507,8 @@ def main():
                         execute.decodeSignals = []
                         continue
                 elif decode.result[0] == 'addi':
-                    if registerToBeWritten == memStage.decodeSignals[1] or registerToBeWritten == memStage.decodeSignals[2]:
+                    if registerToBeWritten == memStage.decodeSignals[1] or registerToBeWritten == \
+                            memStage.decodeSignals[2]:
                         PrintPartialCpuState(cpuObject, output)
                         execute.decodeSignals = []
                         continue
@@ -491,7 +539,7 @@ def main():
                 if execute.result:
                     effective_offset = decode.result[3] - 2
                     # print("Current Program Counter",BTD(cpuObject.program_counter))
-                    cpuObject.program_counter= DTB(BTD(cpuObject.program_counter) + effective_offset)
+                    cpuObject.program_counter = DTB(BTD(cpuObject.program_counter) + effective_offset)
                     # print("Updated Program Counter",BTD(cpuObject.program_counter))
                     fetch.instruction = ""
                     totalInstructions = BTD(cpuObject.program_counter)
@@ -501,9 +549,19 @@ def main():
                     PrintPartialCpuState(cpuObject, output)
                     continue  # Move to a new cycle
 
+            elif temp == "storenoc":
+                execute.storeNOC(decode.result, cpuObject)
+
+            elif temp == "loadnoc":
+                execute.loadNOC(decode.result, cpuObject)
+            decode.result = []
+
         # Step 4 : Decode :
+        # print(i, fetch.instruction)
         if len(fetch.instruction) != 0:
             decode.DecodeInstruction(fetch.instruction)
+            # print(i, decode.result)
+            fetch.instruction = ''
 
         # Step 5 :
         # if not fetch.busy:
@@ -514,14 +572,17 @@ def main():
             # print(i, BTD(cpuObject.program_counter))
             fetch.FetchInstruction(instMem.instructions[BTD(cpuObject.program_counter)])
             cpuObject.program_counter = DTB(BTD(cpuObject.program_counter) + 1)  # updating the program counter by 1
-
         # if not check:  # Checking whether some work was done or not
         #     break
         # print("3\n")
         PrintPartialCpuState(cpuObject, output)
+        if fetch.instruction == '':
+            temporary = temporary - 1
+            if temporary == 0:
+                break
     # Closing the text files opened
     binary.close()
-    output.write("End State of Memory\n")
+    output.write("\nEnd State of Memory\n")
     output.write(str(dataMem.memory))
     output.close()
     return
