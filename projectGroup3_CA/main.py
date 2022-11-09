@@ -399,7 +399,7 @@ def main():
     # Main Logic of the code
     # while True:
     totalInstructions = 0
-    for i in range(27):
+    for i in range(20):
         # check = False  # To check whether current clock cycle is needed or not for the program
         # print(decode.result)
         # print(i, memStage.decodeSignals, memStage.result)
